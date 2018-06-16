@@ -23,8 +23,19 @@ def pose_nms(detections):
     """
     pass
 
+def get_keypoint_width(pose_loc):
+    """
+    :param pose_loc: [n x 17 x 2]
+    :return:
+    """
+    alpha = 0.1
+    body_width = max(
+        np.max(pose_loc[:, :, 0]) - np.min(pose_loc[:, :, 0]),
+        np.max(pose_loc[:, :, 1]) - np.min(pose_loc[:, :, 1]))
+    keypoint_width = body_width * alpha
+    return keypoint_width
 
-def get_pose_dis(choose_idx, pose_conf, box_conf, pose_loc, box_loc,
+def get_pose_dis(choose_idx, pose_conf, pose_loc, keypoint_width,
                  delta1, delta2, mu):
     """
     <class 'numpy'>
@@ -35,14 +46,8 @@ def get_pose_dis(choose_idx, pose_conf, box_conf, pose_loc, box_loc,
     :param box_loc: [n x 4]
     :return:
     """
-    alpha = 0.1
     num_pose = pose_conf.shape[0]
     target_pose_conf = pose_conf[choose_idx]
-
-    body_width = max(
-        np.max(pose_loc[:, :, 0]) - np.min(pose_loc[:, :, 0]),
-        np.max(pose_loc[:, :, 1]) - np.min(pose_loc[:, :, 1]))
-    keypoint_width = body_width * alpha
 
     dist = np.sqrt(np.sum(np.square(pose_loc - pose_loc[choose_idx]), axis=-1)) / keypoint_width
     mask = (dist <= 1)
@@ -52,7 +57,23 @@ def get_pose_dis(choose_idx, pose_conf, box_conf, pose_loc, box_loc,
     score_dists[mask] = np.tanh(pose_conf_tile[mask] / delta1) * np.tanh(pose_conf[mask] / delta1)
 
     point_dists = np.exp((-1) * dist / delta2)
-    return np.sum(score_dists,axis=1) + mu * np.sum(point_dists,axis=1)
+    return np.sum(score_dists, axis=1) + mu * np.sum(point_dists, axis=1)
+
+
+def PCK_match(choose_idx, pose_loc, keypoint_width):
+    """
+    :param choose_idx:
+    :param pose_loc: [n x 17 x 2]
+    :param keypoint_width: 0.1 x body_width
+    :return:
+    """
+    dist = np.sqrt(np.sum(np.square(pose_loc - pose_loc[choose_idx]), axis=-1)) / keypoint_width
+    num_match_keypoints = np.sum(dist / min(keypoint_width, 7) <= 1, axis=1)
+    face_index = np.zeros(dist.shape)
+    face_index[:, :5] = 1
+
+    face_match_keypoints = np.sum((dist / 10 <= 1) & (face_index == 1), axis=1)
+    return num_match_keypoints, face_match_keypoints
 
 
 if __name__ == "__main__":
@@ -71,9 +92,12 @@ if __name__ == "__main__":
         choose_idx = np.argmax(box_conf[candidates])
         choose = candidates[choose_idx]
 
-        get_pose_dis(choose_idx, pose_conf[candidates],
-                     box_conf[candidates], pose_loc[candidates],
-                     box_loc[candidates], delta1=1, delta2=1, mu=1)
+        keypoint_width = get_keypoint_width(pose_loc)
+        simi = get_pose_dis(choose_idx, pose_conf[candidates],
+                      pose_loc[candidates],keypoint_width=keypoint_width,
+                            delta1=1, delta2=1, mu=1)
+        num_match_keypoints, _ = PCK_match(choose_idx, pose_loc[candidates],
+                                           keypoint_width)
 
 
         # candidates = np.delete(candidates, choose_idx)
