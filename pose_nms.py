@@ -67,7 +67,7 @@ def pose_nms(detections, mu=1.7, delta1=1, delta2=2.65, gamma=22.48):
         # force to delete itself
         candidates = np.delete(candidates, np.append(delete_ids, choose_idx))
 
-    print(choose_set)
+    # print(choose_set)
 
     if TEST_MODE:
         assert (np.sum([merge_ids[key].shape[0] for key in choose_set])
@@ -90,7 +90,7 @@ def pose_nms(detections, mu=1.7, delta1=1, delta2=2.65, gamma=22.48):
         max_score = np.max(merge_poses)
         if max_score < scoreThreds:
             continue
-        print(merge_poses, merge_score)
+        # print(merge_poses, merge_score)
 
         merge_detection = np.zeros([1, 56])
         # pose_conf = detections[0, :, 1:18]
