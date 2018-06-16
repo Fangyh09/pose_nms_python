@@ -7,10 +7,7 @@ import numpy as np
 
 TEST_MODE = True
 
-# delta1 = 1;
-# mu = 1.7;
-# delta2 = 2.65;
-# gamma = 22.48;
+
 def pose_nms(detections, mu=1.7, delta1=1, delta2=2.65, gamma=22.48):
     """
     :param detections: shape: [1xnx(1+17+4+34)] <class 'numpy'>
