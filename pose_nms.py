@@ -28,15 +28,31 @@ def get_pose_dis(choose_idx, pose_conf, box_conf, pose_loc, box_loc,
                  delta1, delta2, mu):
     """
     <class 'numpy'>
-    :param candidates: array of idxs
+    :param choose_idx:
     :param pose_conf: [n x 17]
     :param box_conf: [n x 1]
-    :param pose_loc: [n x 34]
+    :param pose_loc: [n x 17 x 2]
     :param box_loc: [n x 4]
     :return:
     """
-    dist = np.square(pose_loc - pose_loc[choose_idx])
-    pass
+    alpha = 0.1
+    num_pose = pose_conf.shape[0]
+    target_pose_conf = pose_conf[choose_idx]
+
+    body_width = max(
+        np.max(pose_loc[:, :, 0]) - np.min(pose_loc[:, :, 0]),
+        np.max(pose_loc[:, :, 1]) - np.min(pose_loc[:, :, 1]))
+    keypoint_width = body_width * alpha
+
+    dist = np.sqrt(np.sum(np.square(pose_loc - pose_loc[choose_idx]), axis=-1)) / keypoint_width
+    mask = (dist <= 1)
+
+    score_dists = np.zeros([num_pose, 17])
+    pose_conf_tile = np.tile(target_pose_conf, [pose_conf.shape[0], 1])
+    score_dists[mask] = np.tanh(pose_conf_tile[mask] / delta1) * np.tanh(pose_conf[mask] / delta1)
+
+    point_dists = np.exp((-1) * dist / delta2)
+    return np.sum(score_dists,axis=1) + mu * np.sum(point_dists,axis=1)
 
 
 if __name__ == "__main__":
@@ -49,20 +65,15 @@ if __name__ == "__main__":
     box_loc = detections[0, :, 18:22]
 
     candidates = np.arange(detections.shape[1])
-    pose_loc = np.reshape(pose_loc, [pose_loc.shape[0], pose_loc.shape[1], -1, 2])
+    pose_loc = np.reshape(pose_loc, [pose_loc.shape[0], -1, 2])
 
-    alpha = 0.1
     while candidates.size > 0:
         choose_idx = np.argmax(box_conf[candidates])
         choose = candidates[choose_idx]
 
-        body_width = np.max(
-            np.max(pose_loc[candidates,:,0]) - np.min(pose_loc[candidates,:,0]),
-            np.max(pose_loc[candidates,:,1]) - np.min(pose_loc[candidates,:,1]))
-        keypoint_width = body_width * alpha
-
-        dist = np.sqrt(np.sum(np.square(pose_loc - pose_loc[choose_idx]), axis=-1)) / keypoint_width
-
+        get_pose_dis(choose_idx, pose_conf[candidates],
+                     box_conf[candidates], pose_loc[candidates],
+                     box_loc[candidates], delta1=1, delta2=1, mu=1)
 
 
         # candidates = np.delete(candidates, choose_idx)
