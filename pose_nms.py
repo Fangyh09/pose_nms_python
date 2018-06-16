@@ -5,6 +5,7 @@
 
 import numpy as np
 
+TEST_MODE = True
 
 def pose_nms(detections):
     """
@@ -85,9 +86,16 @@ if __name__ == "__main__":
     pose_loc = detections[0, :, 22:]
     box_loc = detections[0, :, 18:22]
 
-    candidates = np.arange(detections.shape[1])
+    candidates = np.arange(detections[0,:,:].shape[0])
+    nums_candidates = len(candidates)
+    # todo(delete it)
+    # candidates = np.array([0, 8, 10])
     pose_loc = np.reshape(pose_loc, [pose_loc.shape[0], -1, 2])
 
+    gamma = 0.3
+    matchThreds = 5
+    merge_ids = {}
+    choose_set = []
     while candidates.size > 0:
         choose_idx = np.argmax(box_conf[candidates])
         choose = candidates[choose_idx]
@@ -99,9 +107,25 @@ if __name__ == "__main__":
         num_match_keypoints, _ = PCK_match(choose_idx, pose_loc[candidates],
                                            keypoint_width)
 
+        delete_ids = np.arange(candidates.shape[0])[
+            (simi > gamma) | (num_match_keypoints >= matchThreds)]
 
-        # candidates = np.delete(candidates, choose_idx)
+        assert (delete_ids.size > 0) # at least itself
+        if delete_ids.size == 0:
+            delete_ids = choose_idx
 
+        merge_ids[choose] = candidates[delete_ids]
+        choose_set.append(choose)
+
+        # force to delete itself
+        candidates = np.delete(candidates, np.append(delete_ids, choose_idx))
+
+    print(choose_set)
+
+    if TEST_MODE:
+        assert (np.sum([merge_ids[key].shape[0] for
+                                               key in choose_set])
+                == nums_candidates)
 
 
     print(candidates)
