@@ -7,6 +7,7 @@ import numpy as np
 
 TEST_MODE = True
 
+
 def pose_nms(detections):
     """
     :param detections: shape: [1xnx(1+17+4+34)] <class 'numpy'>
@@ -24,17 +25,19 @@ def pose_nms(detections):
     """
     pass
 
+
 def get_keypoint_width(pose_loc):
     """
-    :param pose_loc: [n x 17 x 2]
+    :param pose_loc: [17 x 2]
     :return:
     """
     alpha = 0.1
     body_width = max(
-        np.max(pose_loc[:, :, 0]) - np.min(pose_loc[:, :, 0]),
-        np.max(pose_loc[:, :, 1]) - np.min(pose_loc[:, :, 1]))
+        np.max(pose_loc[:, 0]) - np.min(pose_loc[:, 0]),
+        np.max(pose_loc[:, 1]) - np.min(pose_loc[:, 1]))
     keypoint_width = body_width * alpha
     return keypoint_width
+
 
 def get_pose_dis(choose_idx, pose_conf, pose_loc, keypoint_width,
                  delta1, delta2, mu):
@@ -77,6 +80,25 @@ def PCK_match(choose_idx, pose_loc, keypoint_width):
     return num_match_keypoints, face_match_keypoints
 
 
+def merge_pose(root_pose, cluster_pose_loc, cluster_pose_conf, keypoint_width):
+    dist = np.sqrt(np.sum(np.square(cluster_pose_loc - root_pose), axis=-1)) / keypoint_width
+    keypoint_width = min(keypoint_width, 15)
+    mask = (dist <= keypoint_width)
+    final_pose = np.zeros([17,2]); final_scores = np.zeros(17)
+
+    pose_loc_t = cluster_pose_loc * np.expand_dims(mask, axis=-1)
+    pose_conf_t = cluster_pose_conf * mask
+
+    weighted_pose_loc = pose_loc_t[:,:,:] * np.expand_dims(pose_conf_t, -1)
+    final_pose[:,:] = np.sum(weighted_pose_loc * 1.0 / np.sum(weighted_pose_loc,
+                                                        axis=0),axis=0)
+
+
+    final_scores = np.sum(pose_conf_t * 1.0 / np.sum(pose_conf_t, axis=0),
+                          axis=0)
+    return final_pose, final_scores
+
+
 if __name__ == "__main__":
     detections = np.load("./detections.save.npz")
     detections = detections["arr_0"]
@@ -94,13 +116,15 @@ if __name__ == "__main__":
 
     gamma = 0.3
     matchThreds = 5
+    scoreThreds = 0.3
+
     merge_ids = {}
     choose_set = []
     while candidates.size > 0:
         choose_idx = np.argmax(box_conf[candidates])
         choose = candidates[choose_idx]
 
-        keypoint_width = get_keypoint_width(pose_loc)
+        keypoint_width = get_keypoint_width(pose_loc[choose])
         simi = get_pose_dis(choose_idx, pose_conf[candidates],
                       pose_loc[candidates],keypoint_width=keypoint_width,
                             delta1=1, delta2=1, mu=1)
@@ -123,11 +147,39 @@ if __name__ == "__main__":
     print(choose_set)
 
     if TEST_MODE:
-        assert (np.sum([merge_ids[key].shape[0] for
-                                               key in choose_set])
+        assert (np.sum([merge_ids[key].shape[0] for key in choose_set])
                 == nums_candidates)
 
+    # merge poses
 
+    result_detections = np.empty([1, 56])
+    for root_pose_idx in choose_set:
+        simi_poses_idx = merge_ids[root_pose_idx]
+        max_score = np.max(pose_conf[simi_poses_idx, :])
+        if max_score < scoreThreds:
+            continue
+        keypoint_width = get_keypoint_width(pose_loc[root_pose_idx])
+
+        merge_poses, merge_score = merge_pose(pose_loc[root_pose_idx],
+                                              pose_loc[simi_poses_idx],
+                                              pose_conf[simi_poses_idx],
+                                              keypoint_width)
+        max_score = np.max(merge_poses)
+        if max_score < scoreThreds:
+            continue
+        print(merge_poses, merge_score)
+
+        merge_detection = np.zeros([1, 56])
+        # pose_conf = detections[0, :, 1:18]
+        # box_conf = detections[0, :, 0]
+        # pose_loc = detections[0, :, 22:]
+        # box_loc = detections[0, :, 18:22]
+        merge_detection[0,1:18] = merge_score
+        merge_detection[0,22:] = merge_poses.reshape(-1)
+
+        result_detections = np.append(result_detections, merge_detection,
+                                      axis=0)
+    result_detections = np.expand_dims(result_detections, axis=0)
     print(candidates)
 
 
