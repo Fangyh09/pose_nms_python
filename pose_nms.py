@@ -3,6 +3,7 @@
 @author: fangyh09
 """
 
+
 import numpy as np
 
 TEST_MODE = True
@@ -200,7 +201,8 @@ def merge_pose(root_pose, cluster_pose_loc, cluster_pose_conf, keypoint_width):
     pose_conf_t = cluster_pose_conf * mask
 
     weighted_pose_conf = pose_conf_t * 1.0 / np.sum(pose_conf_t, axis=0)
-    final_scores = np.sum(weighted_pose_conf, axis=0)
+    result_pose_conf = weighted_pose_conf * pose_conf_t
+    final_scores = np.sum(result_pose_conf, axis=0)
 
     weighted_pose_loc = pose_loc_t[:, :, :] * np.expand_dims(weighted_pose_conf, -1)
     final_pose = np.sum(weighted_pose_loc, axis=0)
